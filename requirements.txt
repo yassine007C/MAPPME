@@ -1,2 +1,4 @@
-flask
-openai
+streamlit
+folium
+streamlit-folium
+pydeck
