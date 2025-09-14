@@ -34,6 +34,7 @@ def destination_point(lat_deg, lon_deg, bearing_deg, distance_m):
 
 # Normalize longitude into [-180, 180)
 def normalize_lon(lon):
+    """Normalize longitude to [-180, 180)"""
     return ((lon + 180) % 360) - 180
 
 # Correct antipode calculation: latitude flips sign, longitude + 180 then normalized
@@ -48,16 +49,22 @@ def antipode(lat, lon):
 def circle_polygon_coords(lat, lon, radius_m, n_points=72):
     coords = []
     step = 360.0 / n_points
+    prev_lon = None
+    for i in range(n_points + 1):
+        br = i * step
+        lat2, lon2 = destination_point(lat, lon, br, radius_m)
+        lon2 = normalize_lon(lon2)
 
-    # If latitude is exactly a pole, shift a tiny bit away to allow destination_point to work
-    if abs(abs(lat) - 90.0) < 1e-9:
-        eps = 1e-6
-        lat_adj = 90.0 - eps if lat > 0 else -90.0 + eps
-        for i in range(n_points + 1):
-            br = i * step
-            lat2, lon2 = destination_point(lat_adj, lon, br, radius_m)
-            coords.append([normalize_lon(lon2), lat2])
-        return coords
+        # إذا كان عندنا قفزة > 180° نصحح
+        if prev_lon is not None and abs(lon2 - prev_lon) > 180:
+            if lon2 > prev_lon:
+                lon2 -= 360
+            else:
+                lon2 += 360
+
+        coords.append([lon2, lat2])
+        prev_lon = lon2
+    return coords
 
     for i in range(n_points + 1):
         br = i * step
