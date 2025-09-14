@@ -1,5 +1,5 @@
 """
-Streamlit app: select a circle on a 2D map (click + radius slider) and show the corresponding circle on a 3D globe.
+Streamlit app: select a circle on a 2D map (click + radius slider) and show the antipodal circle (on the opposite side of the Earth) on a 3D globe.
 Requirements:
     pip install streamlit folium streamlit-folium pydeck
 Run:
@@ -13,9 +13,9 @@ import folium
 from streamlit_folium import st_folium
 import pydeck as pdk
 
-st.set_page_config(layout="wide", page_title="Globe Circle Selector")
+st.set_page_config(layout="wide", page_title="Globe Antipodal Circle")
 
-st.title("عرض دائرة على الخريطة واظهارها على الكرة الأرضية")
+st.title("عرض دائرة والجهة المقابلة لها على الكرة الأرضية")
 
 # Helper: destination point given start lat/lon, bearing (deg), distance (m)
 R = 6371000.0  # Earth radius in meters
@@ -40,6 +40,10 @@ def circle_polygon_coords(lat, lon, radius_m, n_points=72):
         lat2, lon2 = destination_point(lat, lon, br, radius_m)
         coords.append([lon2, lat2])  # GeoJSON expects [lon, lat]
     return coords
+
+# Antipode function
+def antipode(lat, lon):
+    return -lat, ((lon + 180) % 360) - 180
 
 # Layout: left column for 2D folium map, right for globe
 col1, col2 = st.columns([1, 1])
@@ -71,13 +75,10 @@ with col1:
     st.markdown("**اضغط على الخريطة لاختيار مركز الدائرة. أو استخدم التحديد اليدوي أعلاه.**")
 
     # show folium map and capture click
-    map_data = st_folium(m, width=700, height=500)
-    # st_folium returns last_clicked
-    last_clicked = map_data.get("last_clicked") if isinstance(map_data, dict) else None
-
-    if last_clicked:
-        lat_click = last_clicked.get('lat')
-        lon_click = last_clicked.get('lng')
+    map_data = st_folium(m, width=700, height=500, returned_objects=["last_clicked"], key="map1")
+    if map_data and map_data.get("last_clicked"):
+        lat_click = map_data["last_clicked"]["lat"]
+        lon_click = map_data["last_clicked"]["lng"]
         st.session_state.center = (lat_click, lon_click)
         center_lat, center_lon = lat_click, lon_click
 
@@ -86,24 +87,27 @@ with col1:
     folium.Marker(location=[center_lat, center_lon], popup="Center").add_to(m)
 
     # Re-render map with circle
-    st_folium(m, width=700, height=500, returned_objects=["last_clicked"])  # second rendering so user sees circle
+    st_folium(m, width=700, height=500, key="map2")
 
 with col2:
-    st.subheader("الكرة الأرضية 3D — الدائرة المقابلة")
+    st.subheader("الكرة الأرضية 3D — الدائرة على الجهة المقابلة")
 
     if 'center' in st.session_state:
         lat0, lon0 = st.session_state.center
     else:
         lat0, lon0 = 20.0, 0.0
 
-    # Build GeoJSON polygon for the circle
-    polygon_coords = circle_polygon_coords(lat0, lon0, radius, n_points=128)
+    # Compute antipode of selected center
+    anti_lat, anti_lon = antipode(lat0, lon0)
+
+    # Build GeoJSON polygon for the antipodal circle
+    polygon_coords = circle_polygon_coords(anti_lat, anti_lon, radius, n_points=128)
     geojson = {
         "type": "FeatureCollection",
         "features": [
             {
                 "type": "Feature",
-                "properties": {"name": "selected_circle"},
+                "properties": {"name": "antipodal_circle"},
                 "geometry": {"type": "Polygon", "coordinates": [polygon_coords]},
             }
         ]
@@ -118,14 +122,14 @@ with col2:
         stroked=True,
         filled=True,
         extruded=False,
-        get_fill_color=[255, 160, 0, 100],
-        get_line_color=[255, 100, 0],
+        get_fill_color=[0, 200, 255, 100],
+        get_line_color=[0, 100, 255],
         line_width_min_pixels=2,
     )
 
     deck = pdk.Deck(
         layers=[geojson_layer],
-        initial_view_state=pdk.ViewState(latitude=lat0, longitude=lon0, zoom=0, pitch=0),
+        initial_view_state=pdk.ViewState(latitude=anti_lat, longitude=anti_lon, zoom=0, pitch=0),
         views=[globe_view],
         map_style=None,
     )
@@ -134,8 +138,8 @@ with col2:
 
 # Footer / tips
 st.markdown("---")
-st.markdown("**نصائح:** اضغط على الخريطة في العمود الأيسر لاختيار مركز الدائرة، وغير نصف القطر عبر شريط التمرير. الخريطة ثلاثية الأبعاد في العمود الأيمن تُظهر الموقع المقابل على الكرة الأرضية.")
+st.markdown("**نصائح:** العمود الأيسر لاختيار المركز ونصف القطر، العمود الأيمن يعرض الدائرة في الجهة المقابلة من الكرة الأرضية.")
 
 # Optional: download GeoJSON
-if st.button("تحميل GeoJSON للدائرة"):
-    st.download_button("تحميل GeoJSON", data=json.dumps(geojson), file_name="circle.geojson", mime="application/json")
+if st.button("تحميل GeoJSON للدائرة المقابلة"):
+    st.download_button("تحميل GeoJSON", data=json.dumps(geojson), file_name="antipodal_circle.geojson", mime="application/json")
